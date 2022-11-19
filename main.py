@@ -11,17 +11,10 @@ from nni.compression.pytorch.speedup import ModelSpeedup
 
 
 
-epochs = 2
-pruner_used = "L1NormPruner"          # -> (L1NormPruner, FPGMPruner)
-config_choice = "config_list_1"     # -> or config_list_2
-# device = "cuda" # or cuda
+epochs = 10
 
 if __name__ == '__main__':
 
-    # print("\nDEVICE BEING USED: ", device, "\n")
-
-    # Defined original unpruned model
-    # model = ResNet().to(device)
     model = ResNet(1, ResBlock, [1, 1], outputs=10).to(device)
 
     print("ORIGINAL UN-PRUNED MODEL: \n\n", model, "\n\n")
@@ -29,8 +22,6 @@ if __name__ == '__main__':
     # Starting time for unpruned model
     start_time = time.time()
 
-    # Running the pre-training stage with original unpruned model
-    # optimizer = Adam(model.parameters(), lr=1e-3)
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
     for epoch in range(epochs):
         train(model, optimizer)
@@ -43,8 +34,8 @@ if __name__ == '__main__':
     exec_time = end_time - start_time
     print("\nTHE TOTAL EXECUTION TIME OF UNPRUNED MODEL: ", exec_time, "\n\n")
 
-    torch.save(model, f'./pretrained_model.pth')
-    print('Pretrained model saved')
+    torch.save(model, f'./unpruned_model.torch')
+    print('Unpruned model saved')
 
     configuration_list = [{
         'sparsity_per_layer': 0.4,
@@ -56,7 +47,7 @@ if __name__ == '__main__':
     # Defining the pruner to be used
     pruner = L1NormPruner(model, configuration_list)
     
-    print("PRUNER WRAPPED MODEL WITH {}: \n\n".format(pruner_used), model, "\n\n")
+    print(f"PRUNER WRAPPED MODEL WITH L1 NormPruner: \n\n{model}\n\n")
 
     # Next, compressing the model and generating masks
     _, masks = pruner.compress()
@@ -69,7 +60,7 @@ if __name__ == '__main__':
 
     ModelSpeedup(model, torch.rand(64, 1, 28, 28).to(device), masks).speedup_model()
 
-    print("\nPRUNED MODEL WITH {}: \n\n".format(pruner_used), model, "\n\n")
+    print(f"PRUNED MODEL WITH L1 NormPruner: \n\n{model}\n\n")
 
     # Starting time for pruned model
     start_time = time.time()
@@ -87,31 +78,42 @@ if __name__ == '__main__':
     exec_time = end_time - start_time
     print("\nTHE TOTAL EXECUTION TIME OF PRUNED MODEL: ", exec_time, "\n\n")
 
-    torch.save(model, f'./pruned_model.pth')
+    torch.save(model, f'./pruned_model.torch')
     print('Pruned model saved')
 
 
-    print("\n\nPerforming distillation: loading teacher and student models")
+    print("\nPerforming distillation\n")
 
-    teacher_model = torch.load('./pretrained_model.pth', map_location=device)
-    student_model = torch.load('./pruned_model.pth', map_location=device)
     
-    # model_t = teacher_model.eval()
-    # model_s = student_model.train()
+    teacher_model = torch.load('./unpruned_model.torch', map_location=device)
+    student_model = torch.load('./pruned_model.torch', map_location=device)
+    
+    
+    start_time = time.time()
+
     models = [student_model, teacher_model]
     optimizer = torch.optim.SGD(student_model.parameters(), lr=1e-3)
 
     for epoch in range(epochs):
-        fine_tune(models,optimizer,5)
+        fine_tune(models,optimizer,5) # Set temperature to 5 for distillKL
         test(models[0])
+    
+    end_time = time.time()
 
+    print("Distillation of pruned model done")
+    print("Saving distilled model in onnx format for tvm")
+
+    print(f"Distilled and pruned model: \n\n{student_model}\n\n")
+    print(f"THE TOTAL EXECUTION TIME OF DISTILLED MODEL: {end_time-start_time}")
+
+    # Exporting the torch model 
     student_model.eval()
     x = torch.randn(64, 1, 28, 28).to(device)
     torch.onnx.export(
         student_model,
         x,
-        "distilled_pruned_model.onnx",
+        "distilled_model.onnx",
         export_params=True,
-        input_names=["dummy_input"],
-        output_names=["dummpy_output"],
+        input_names=["data"],
+        output_names=["output"],
     )
