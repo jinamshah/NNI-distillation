@@ -1,4 +1,4 @@
-# Model pruning using Microsoft NNI
+# Model distillation using NNI and model tuning using TVM
 
 ### Authors
 
