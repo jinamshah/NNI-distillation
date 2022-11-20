@@ -206,6 +206,8 @@ def fine_tune(models, optimizer,kd_temperature):
         # total loss
         loss = loss_cri + loss_kd
         loss.backward()
+        optimizer.step()
+        
 
 # for t in range(args.epochs):
 #     print(f"Epoch {t + 1}\n-------------------------------")
