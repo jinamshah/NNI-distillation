@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 from torchvision import datasets, transforms
 from torchsummary import summary
+import numpy as np
 
 
 # Creating arguments parser
@@ -48,10 +49,6 @@ if torch.cuda.is_available():
 
     torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = True
 
-# Fetching the next optimized hyperparameter
-# optimized_params = nni.get_next_parameter()
-# params.update(optimized_params)
-# print(params)
 
 # Loading the training and testing data in dataloaders
 train_loader = torch.utils.data.DataLoader(
@@ -62,6 +59,9 @@ test_loader = torch.utils.data.DataLoader(
     datasets.FashionMNIST('../data', train=False, transform=transforms.ToTensor()),
     batch_size=params['batch_size'], shuffle=False, drop_last=True, **kwargs)
 
+# Saving the test data for use with tvm later
+data_numpy = next(iter(test_loader))[0].numpy()
+np.savez("test_data", data=data_numpy)
 
 # Creating a ResNet block
 class ResBlock(nn.Module):
@@ -88,7 +88,7 @@ class ResBlock(nn.Module):
         input = input + shortcut
         return nn.ReLU()(input)
 
-
+# Creating a ResNet architecture
 class ResNet(nn.Module):
     def __init__(self, in_channels, resblock, repeat, outputs=10):
         super().__init__()
@@ -127,16 +127,11 @@ class ResNet(nn.Module):
         input = self.fc(input)
         return input
 
-# Defining the custom light ResNet model
-# model = ResNet(1, ResBlock, [1, 1], outputs=10).to(device)
+
 
 # Specifying the loss function
 loss_fn = nn.CrossEntropyLoss()
 
-# Specifying SGD optimizer
-# optimizer = torch.optim.SGD(
-#     model.parameters(), lr=params["lr"], momentum=params["momentum"]
-# )
 
 # Model training function
 def train(model, optimizer):
@@ -149,10 +144,6 @@ def train(model, optimizer):
         loss.backward()
         optimizer.step()
 
-        # if batch_idx % args.log_interval == 0:
-        #     print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-        #         epoch, batch_idx * len(data), len(train_loader.dataset),
-        #                100. * batch_idx / len(train_loader), loss.item()))
 
 # Model testing function
 def test(model):
@@ -176,6 +167,8 @@ def test(model):
     correct /= size
     return correct
 
+# Defining a class for distillation to override the nni module.
+# This will help us calculate the KL Divergence
 class DistillKL(nn.Module):
     """Distilling the Knowledge in a Neural Network"""
 
@@ -189,6 +182,7 @@ class DistillKL(nn.Module):
         loss = torch.nn.functional.kl_div(p_s, p_t, size_average=False) * (self.T**2) / y_s.shape[0]
         return loss
 
+# Function for distillation of a student model using a teacher model
 def fine_tune(models, optimizer,kd_temperature):
     model_s = models[0].train()
     model_t = models[-1].eval()
@@ -207,11 +201,4 @@ def fine_tune(models, optimizer,kd_temperature):
         loss = loss_cri + loss_kd
         loss.backward()
         optimizer.step()
-        
 
-# for t in range(args.epochs):
-#     print(f"Epoch {t + 1}\n-------------------------------")
-#     train()
-#     accuracy = test()
-#     nni.report_intermediate_result(accuracy)
-# nni.report_final_result(accuracy)

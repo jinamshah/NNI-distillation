@@ -19,14 +19,17 @@ if __name__ == '__main__':
 
     print("ORIGINAL UN-PRUNED MODEL: \n\n", model, "\n\n")
 
-    # Starting time for unpruned model
-    start_time = time.time()
+    
 
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
     for epoch in range(epochs):
         train(model, optimizer)
         test(model)
 
+    print("Running the test data once to get execution time for it")
+    # Starting time for unpruned model
+    start_time = time.time()
+    test(model)
     # Ending time for unpruned model
     end_time = time.time()
 
@@ -62,35 +65,30 @@ if __name__ == '__main__':
 
     print(f"PRUNED MODEL WITH L1 NormPruner: \n\n{model}\n\n")
 
-    # Starting time for pruned model
-    start_time = time.time()
-
+    
     # Running the pre-training stage with pruned model
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
     for epoch in range(epochs):
         train(model, optimizer)
         test(model)
 
+    print("Running the test data once to get execution time for it")
+    # Starting time for pruned model
+    start_time = time.time()
+    test(model)
     # Ending time for pruned model
     end_time = time.time()
 
-    # The total execution time of pruned model
-    exec_time = end_time - start_time
-    print("\nTHE TOTAL EXECUTION TIME OF PRUNED MODEL: ", exec_time, "\n\n")
+    print(f"\nTHE TOTAL EXECUTION TIME OF PRUNED MODEL: {end_time-start_time}")
 
     torch.save(model, f'./pruned_model.torch')
     print('Pruned model saved')
 
-
     print("\nPerforming distillation\n")
-
     
     teacher_model = torch.load('./unpruned_model.torch', map_location=device)
     student_model = torch.load('./pruned_model.torch', map_location=device)
     
-    
-    start_time = time.time()
-
     models = [student_model, teacher_model]
     optimizer = torch.optim.SGD(student_model.parameters(), lr=1e-3)
 
@@ -98,13 +96,18 @@ if __name__ == '__main__':
         fine_tune(models,optimizer,5) # Set temperature to 5 for distillKL
         test(models[0])
     
+    print("Running the test data once to get execution time for it")
+    # Starting time for distilled model
+    start_time = time.time()
+    test(model)
+    # Ending time for distilled model
     end_time = time.time()
 
     print("Distillation of pruned model done")
-    print("Saving distilled model in onnx format for tvm")
-
     print(f"Distilled and pruned model: \n\n{student_model}\n\n")
     print(f"THE TOTAL EXECUTION TIME OF DISTILLED MODEL: {end_time-start_time}")
+
+    print("Saving distilled model in onnx format for tvm")
 
     # Exporting the torch model 
     student_model.eval()

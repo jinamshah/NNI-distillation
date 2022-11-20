@@ -29,6 +29,6 @@ echo "COMPILING TUNED MODEL"
 
 tvmc compile --target "llvm" --input-shapes "data:[64,1,28,28]" --tuning-records models/tune_config.json --output models/final_tuned_model.tar models/distilled_model.onnx
 
-python get_image.py
+tvmc run --inputs test_data.npz --repeat 50 --print-time --output temp_predictions.npz models/final_tuned_model.tar
 
-tvmc run --inputs imagenet_cat.npz --print-time --output temp_predictions.npz models/final_tuned_model
+
